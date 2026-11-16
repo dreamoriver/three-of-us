@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1016">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>群聊三角学</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:#0f1016;color:#e9eaf2;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+body{min-height:100vh}
+#app{max-width:520px;margin:0 auto;padding:24px 18px 70px}
+h1{font-size:23px;margin:6px 0 6px;letter-spacing:.5px}
+.sub{color:#7b8098;font-size:13px;line-height:1.75;margin-bottom:22px}
+.card{background:#191b25;border:1px solid #262a3a;border-radius:16px;padding:16px 18px;margin-bottom:12px;cursor:pointer;transition:.15s;display:flex;gap:14px;align-items:center}
+.card:active{transform:scale(.98);background:#212534}
+.card .em{font-size:28px;line-height:1;flex:none}
+.card .tt{font-size:16px;font-weight:600}
+.card .dd{font-size:12.5px;color:#8b90a8;margin-top:4px;line-height:1.5}
+.names{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:20px 0 6px}
+.names input{width:100%;background:#151722;border:1px solid #262a3a;color:#e9eaf2;border-radius:10px;padding:10px 8px;font-size:13px;text-align:center;outline:none;font-family:inherit}
+.names input:focus{border-color:#3a4a7a}
+.hint{font-size:11.5px;color:#5e6479;line-height:1.7;margin-top:12px}
+.bar{display:flex;align-items:center;gap:9px;margin-bottom:10px;font-size:12.5px;color:#9aa0b8}
+.bar .lb{width:62px;flex:none;text-align:right}
+.bar .track{flex:1;height:7px;background:#1c1f2b;border-radius:99px;overflow:hidden}
+.bar .fill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.3,1,.4,1)}
+.bar .num{width:32px;font-variant-numeric:tabular-nums;color:#6c7288;text-align:right}
+.scene{background:#191b25;border:1px solid #262a3a;border-radius:18px;padding:20px 18px;font-size:15.5px;line-height:1.85;margin:4px 0 18px;white-space:pre-wrap}
+.opt{display:block;width:100%;text-align:left;background:#1a1d28;border:1px solid #2b3044;color:#e9eaf2;border-radius:14px;padding:15px 16px;font-size:14.5px;line-height:1.6;margin-bottom:10px;cursor:pointer;font-family:inherit;transition:.12s}
+.opt:active{background:#262b3d;transform:scale(.99)}
+.reply{background:#141824;border:1px solid #24304a;border-radius:14px;padding:16px;font-size:14.5px;line-height:1.75;margin-bottom:16px;color:#c9d3ea}
+.reply .who{color:#6f8bd6;font-size:12.5px;margin-bottom:8px;letter-spacing:.3px}
+.reply .delta{color:#5e6479;font-size:12px;margin-top:10px}
+.btn{display:block;width:100%;background:#2f6df6;color:#fff;border:0;border-radius:14px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-bottom:10px}
+.btn.ghost{background:#1b1e2a;color:#9aa0b8;border:1px solid #2b3044}
+.btn:active{opacity:.85}
+.endt{font-size:25px;font-weight:800;margin:10px 0 10px;letter-spacing:1px;line-height:1.35;background:linear-gradient(92deg,#7f9cf0,#c08fdc,#7f9cf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.endd{color:#9aa0b8;font-size:14px;line-height:1.85;margin-bottom:18px}
+.topo{background:#191b25;border:1px solid #262a3a;border-radius:16px;padding:18px;font-size:13.5px;line-height:2.05;color:#a8aec6;margin-bottom:16px;font-variant-numeric:tabular-nums}
+.topo b{color:#e9eaf2}
+.recap{background:#151722;border:1px solid #242838;border-radius:16px;padding:6px 16px;margin-bottom:16px}
+.ritem{padding:12px 0;border-bottom:1px solid #20242f;font-size:13px;line-height:1.65;color:#9aa0b8}
+.ritem:last-child{border-bottom:0}
+.ritem .rn{color:#5e6479;font-size:11.5px}
+.ritem .rp{color:#dfe4f2}
+.ritem .rd{color:#6d84c9;font-size:11.5px;margin-top:3px}
+.meta{font-size:11.5px;color:#525868;line-height:1.7;margin-top:6px}
+img.out{width:100%;border-radius:14px;margin-bottom:12px;display:block}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+"use strict";
+var app = document.getElementById('app');
+var FT = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",-apple-system,sans-serif';
+
+var S = {
+  names:{A:'A',B:'B',C:'C'},
+  emo:{A:'🐶',B:'🌙',C:'🍉'},
+  role:null, turn:0,
+  v:{lick:0,cold:0,melon:0},
+  log:[], hist:[], pool:[], cur:null, pend:null, done:false
+};
+
+function nm(k){ return S.names[k]; }
+function sub(s){
+  return String(s).replace(/\{A\}/g,S.names.A).replace(/\{B\}/g,S.names.B).replace(/\{C\}/g,S.names.C);
+}
+function shuffle(a){
+  for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a;
+}
+function clamp(n){ return Math.max(0,Math.min(100,n)); }
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function pickOther(k){
+  var arr = ['A','B','C'].filter(function(x){ return x!==k; });
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+/* ---------------- 事件池 ---------------- */
+
+var EV = {
+A:[
+ {s:'{B} 发了条动态：「好累」，配图是一片灰天。', w:'B', o:[
+   {x:'秒回：怎么啦 需要人陪吗', v:[18,0,0], r:'嗯嗯 睡一觉就好了'},
+   {x:'点了赞 然后关掉手机 等她自己来找我', v:[-6,6,3], r:'（三小时后 她又发了一条动态 你还是没忍住去看了）'},
+   {x:'买杯奶茶 悄悄放她公司前台', v:[27,6,2], r:'收到了 谢谢 下次别这样了'}
+ ]},
+ {s:'{C} 私聊你：「{B} 今天夸你可爱了」', w:'C', o:[
+   {x:'原话是什么 一个字都别漏', v:[22,0,18], r:'她说你又乖又懂事 我翻译一下 就是没戏'},
+   {x:'把你和 {B} 的聊天截图发给 {C} 让他鉴定', v:[8,10,30], r:'兄弟 你这九张截图里 她一共打了四个字'},
+   {x:'你俩背着我聊什么呢', v:[4,0,24], r:'哎呀 随便聊聊 别多想'}
+ ]},
+ {s:'凌晨 2:37，{B} 发来一个字：「在」', w:'B', o:[
+   {x:'在在在 怎么了 我马上到', v:[30,0,0], r:'哦 没事 睡不着 随便发发'},
+   {x:'先回个在 然后不说话 看她说', v:[9,8,0], r:'（她再也没说话 你盯着屏幕到四点）'},
+   {x:'装睡 明早再回「昨晚睡了」', v:[-10,12,0], r:'嗯 早'}
+ ]},
+ {s:'{B} 发了张合照 里头有个你没见过的人', w:'B', o:[
+   {x:'直接问一句：这是谁', v:[14,8,0], r:'同事 你想多了'},
+   {x:'点个赞 表现得很大气', v:[6,2,0], r:'（她秒赞了你的赞）'},
+   {x:'也发一张和异性的合照', v:[4,20,10], r:'（她没点赞 但看了 你知道她看了）'}
+ ]},
+ {s:'你说「今天特别想见你」，{B} 回：「改天吧」', w:'B', o:[
+   {x:'改天是哪天 我先把日历空出来', v:[25,2,0], r:'哈哈 你好夸张'},
+   {x:'行 那我不打扰了', v:[5,10,0], r:'嗯嗯'},
+   {x:'没事 我正好约了 {C} 吃饭', v:[3,18,15], r:'哦 那你玩得开心'}
+ ]},
+ {s:'{B} 发来一条 60 秒语音', w:'B', o:[
+   {x:'逐字听完 再写八百字读后感', v:[28,0,0], r:'啊 你还真听完了'},
+   {x:'转文字 只看前两行', v:[6,4,0], r:'你根本没听完吧'},
+   {x:'回一个 emoji 表示听了', v:[3,15,0], r:'（她也没再说什么）'}
+ ]}
+],
+B:[
+ {s:'{A} 又发来一句：「在吗」', w:'A', o:[
+   {x:'回一个字：嗯', v:[12,18,0], r:'那个 你今天休息吗 要不要一起吃饭'},
+   {x:'已读不回', v:[22,15,0], r:'（十分钟后 他又发了一条 在吗）'},
+   {x:'认真说清楚：我们只是朋友', v:[-25,5,0], r:'我知道啊 我又没别的意思 你别多想'}
+ ]},
+ {s:'同一分钟里，{A} 和 {C} 都发来了消息', w:'C', o:[
+   {x:'秒回 {C} 把 {A} 晾着', v:[8,25,20], r:'你就知道陪我 哈哈哈'},
+   {x:'先回 {A} 再回 {C}', v:[10,10,0], r:'（{C} 那边显示已读）'},
+   {x:'两个都回 但给 {C} 的字数是 {A} 的三倍', v:[6,15,15], r:'你这人真有意思'}
+ ]},
+ {s:'{C} 问你：「{A} 是不是喜欢你」', w:'C', o:[
+   {x:'他单方面的事 跟我没关系', v:[0,12,0], r:'哦 那我就放心了'},
+   {x:'你别管他 你只要管我', v:[0,0,32], r:'……你这话什么意思'},
+   {x:'你想多了', v:[0,15,10], r:'是吧 我也觉得'}
+ ]},
+ {s:'{A} 把奶茶放在你工位上了', w:'A', o:[
+   {x:'收下 说声谢谢', v:[20,0,0], r:'不客气 你喜欢就好'},
+   {x:'退回去 说别这样', v:[-20,4,0], r:'对不起 是我唐突了'},
+   {x:'收下 然后分给同事', v:[15,10,0], r:'（他第二天又送了一杯）'}
+ ]},
+ {s:'{A} 说：「我等你」', w:'A', o:[
+   {x:'别等了', v:[-30,3,0], r:'嗯 我知道了'},
+   {x:'随便你', v:[15,20,0], r:'那我就当你没拒绝'},
+   {x:'谢谢', v:[25,10,0], r:'（他截图存了下来 反复看了很多次）'}
+ ]},
+ {s:'你在群里发了条消息，{A} 秒回，{C} 没理', w:'A', o:[
+   {x:'只回 {C} 的那句玩笑', v:[6,20,20], r:'（{A} 的那条就这么挂在那儿）'},
+   {x:'两个都回 一个字数多一个字数少', v:[10,8,8], r:'（谁多谁少 群里三个人心里都有数）'},
+   {x:'把刚发的群消息撤回了', v:[4,15,10], r:'你怎么撤回了 我还没看清'}
+ ]}
+],
+C:[
+ {s:'{A} 发来九张截图，问：「她这话到底什么意思」', w:'A', o:[
+   {x:'兄弟 这明显有戏 冲就完了', v:[30,0,20], r:'真的吗 那我今晚就发消息'},
+   {x:'说句实话 她三天回了你一个嗯', v:[-12,0,10], r:'……那可能是她在忙吧'},
+   {x:'先别动 我把截图转给 {B} 问问', v:[6,25,40], r:'（三分钟后 {B} 给你发来一个问号）'}
+ ]},
+ {s:'{B} 私聊你：「{A} 是不是有点太热情了」', w:'B', o:[
+   {x:'他人挺好的 就是比较真诚', v:[8,0,18], r:'真诚是真诚 但有点压人'},
+   {x:'你不是喜欢 {C} 吗 还操心他', v:[0,10,30], r:'……你少管'},
+   {x:'我劝他收着点 你放心', v:[-15,0,12], r:'嗯 谢谢你'}
+ ]},
+ {s:'{A} 问你：「今晚要不要给她发消息」', w:'A', o:[
+   {x:'发 凌晨是她心最软的时候', v:[35,0,25], r:'我发了 她回了个句号'},
+   {x:'忍住 三天不联系 她就该想你了', v:[15,10,15], r:'真的假的 你试过吗'},
+   {x:'你先把草稿发我 我帮你改', v:[10,0,20], r:'（他发来一版 你改了七个字 把语气改软了）'}
+ ]},
+ {s:'群里 {B} 和 {C} 在互相接梗，{A} 连发三条没人理', w:'A', o:[
+   {x:'给 {A} 点个赞 以示鼓励', v:[12,0,25], r:'还是你懂我（他私聊谢了你三次）'},
+   {x:'@{A} 兄弟别发了 我看着都疼', v:[5,0,32], r:'（群里安静了十秒 然后 {B} 发了个狗头）'},
+   {x:'装作没看见 继续看戏', v:[-5,0,15], r:'（他最后把三条都撤回了）'}
+ ]},
+ {s:'{A} 说：「我觉得她对我是有感觉的」', w:'A', o:[
+   {x:'对 你只是还没赶上对的时机', v:[20,0,20], r:'你也这么觉得对吧 我就说'},
+   {x:'你把她这周对我说过的话念一遍', v:[-10,0,35], r:'（他念了 一共十三个字 其中六个是哈哈）'},
+   {x:'要不我帮你问问 {B}', v:[3,20,25], r:'别别别 你别问 千万别问'}
+ ]},
+ {s:'深夜，{A} 发来一句：「我是不是很没用」', w:'A', o:[
+   {x:'不是 你只是太认真了', v:[10,0,10], r:'谢谢你 真的'},
+   {x:'兄弟 从明天起 别再主动发消息', v:[-20,0,8], r:'（他答应得很好 第二天早上七点还是发了早安）'},
+   {x:'截图存档 明天发群里', v:[2,15,45], r:'你敢 你敢我就退群'}
+ ]}
+]};
+
+/* ---------------- 首页 ---------------- */
+
+function home(){
+  app.innerHTML =
+   '<h1>群聊三角学</h1>'+
+   '<div class="sub">三个人的事 四个人的快乐<br>选一个身份进场 六回合见分晓</div>'+
+   '<div class="card" data-role="A"><div class="em">🐶</div><div>'+
+     '<div class="tt">我是 '+esc(nm('A'))+' 那个一直在舔的</div>'+
+     '<div class="dd">热情 主动 已读不回也照发</div></div></div>'+
+   '<div class="card" data-role="B"><div class="em">🌙</div><div>'+
+     '<div class="tt">我是 '+esc(nm('B'))+' 那个被舔的</div>'+
+     '<div class="dd">一边回嗯 一边和别人聊到深夜</div></div></div>'+
+   '<div class="card" data-role="C"><div class="em">🍉</div><div>'+
+     '<div class="tt">我是 '+esc(nm('C'))+' 那个吃瓜的</div>'+
+     '<div class="dd">专门负责鼓励别人去勇敢追爱</div></div></div>'+
+   '<div class="names">'+
+     '<input id="nA" value="'+esc(nm('A'))+'" placeholder="A">'+
+     '<input id="nB" value="'+esc(nm('B'))+'" placeholder="B">'+
+     '<input id="nC" value="'+esc(nm('C'))+'" placeholder="C">'+
+   '</div>'+
+   '<div class="hint">想填真名就填 反正你自己心里有数 不填也行<br>地址栏里的名字不会带到别人那儿去</div>';
+
+  ['A','B','C'].forEach(function(k){
+    var el = document.getElementById('n'+k);
+    el.addEventListener('input', function(){
+      var v = el.value.trim();
+      S.names[k] = v || k;
+    });
+  });
+  Array.prototype.forEach.call(app.querySelectorAll('.card'), function(c){
+    c.onclick = function(){ start(c.getAttribute('data-role')); };
+  });
+}
+
+/* ---------------- 游戏 ---------------- */
+
+function start(role){
+  S.role = role; S.turn = 0;
+  S.v = {lick:0,cold:0,melon:0};
+  S.log = []; S.hist = []; S.done = false;
+  S.pool = shuffle(EV[role].slice());
+  nextTurn();
+}
+
+function nextTurn(){
+  if(S.turn >= 6){ showEnd(); return; }
+  S.cur = S.pool[S.turn % S.pool.length];
+  renderScene();
+}
+
+function barHTML(label, val, color){
+  var w = clamp(val);
+  return '<div class="bar"><div class="lb">'+label+'</div>'+
+    '<div class="track"><div class="fill" style="width:'+w+'%;background:'+color+'"></div></div>'+
+    '<div class="num">'+w+'</div></div>';
+}
+function statusBar(){
+  var v = S.v;
+  return barHTML('🐶 舔', v.lick, '#e0707a') +
+         barHTML('🧊 冷', v.cold, '#5fa8e0') +
+         barHTML('🍉 瓜', v.melon, '#7fdc8a');
+}
+
+function renderScene(){
+  var ev = S.cur;
+  var h = '<div class="meta">第 '+(S.turn+1)+' / 6 回合 · 你扮演 '+S.emo[S.role]+' '+esc(nm(S.role))+'</div>'+
+          '<div style="height:12px"></div>'+
+          statusBar()+
+          '<div style="height:10px"></div>'+
+          '<div class="scene">'+esc(sub(ev.s))+'</div>';
+  ev.o.forEach(function(o,i){
+    h += '<button class="opt" data-i="'+i+'">'+esc(sub(o.x))+'</button>';
+  });
+  app.innerHTML = h;
+  Array.prototype.forEach.call(app.querySelectorAll('.opt'), function(b){
+    b.onclick = function(){ pick(parseInt(b.getAttribute('data-i'),10)); };
+  });
+}
+
+function pick(i){
+  var ev = S.cur, o = ev.o[i];
+  S.v.lick += o.v[0]; S.v.cold += o.v[1]; S.v.melon += o.v[2];
+  S.log.push({me:S.role, text:sub(o.x), other:ev.w, reply:sub(o.r)});
+  S.hist.push({n:S.turn+1, scene:sub(ev.s), pick:sub(o.x), d:o.v});
+  S.pend = o;
+  renderReply();
+}
+
+function renderReply(){
+  var ev = S.cur, o = S.pend;
+  var d = [];
+  if(o.v[0]) d.push('舔 '+(o.v[0]>0?'+':'')+o.v[0]);
+  if(o.v[1]) d.push('冷 '+(o.v[1]>0?'+':'')+o.v[1]);
+  if(o.v[2]) d.push('瓜 '+(o.v[2]>0?'+':'')+o.v[2]);
+  app.innerHTML = statusBar() +
+    '<div style="height:10px"></div>'+
+    '<div class="reply"><div class="who">'+S.emo[ev.w]+' '+esc(nm(ev.w))+'</div>'+
+    esc(sub(o.r))+'<div class="delta">'+d.join(' · ')+'</div></div>'+
+    '<button class="btn" id="go">'+(S.turn>=5?'看看结局':'继续')+'</button>';
+  document.getElementById('go').onclick = function(){ S.turn++; nextTurn(); };
+}
+
+/* ---------------- 结局 ---------------- */
+
+function ending(){
+  var v = S.v, n = S.names;
+  if(v.lick>=70 && v.cold>=55){
+    return {t:'舔 从入门到入土',
+      d:'你的每一次热情 都被原样退回 而你还在等一个「改天」。\n'+
+        '最惨的是 ' + n.C + ' 那边还存着你发过去的九张截图。'};
+  }
+  if(v.lick>=70){
+    return {t:'舔狗之王 · 满级',
+      d:'排行榜第一 无人能敌 连你自己都不知道自己在图什么。\n'+
+        '系统提示：满级之后没有奖励 只有更响的沉默。'};
+  }
+  if(v.melon>=75){
+    return {t:'吃瓜吃到自己家',
+      d:'你只是想吃个瓜 结果瓜藤一路长到了你脚边。\n'+
+        '你保存的每一张截图 最后都会变成你的。'};
+  }
+  if(v.cold>=70){
+    return {t:'已读不回协会 主席',
+      d:'你在感情里最擅长的动作 是把对话留在未回复状态。\n'+
+        '群里三个人 你最清醒 也最不好惹。'};
+  }
+  if(v.lick<=25 && v.cold<=25 && v.melon<=25){
+    return {t:'无事发生',
+      d:'六回合过去了 群里什么都没变。\n'+
+        '也许这才是最好的结局 也许你只是没敢点那个选项。'};
+  }
+  return {t:'还在继续',
+    d:'没有赢家 也没有输家 只有一条永远不会被点开的消息。\n'+
+      '第二天早上 群里依旧有人发早安 依旧没人回。'};
+}
+
+function showEnd(){
+  S.done = true;
+  var e = ending(), v = S.v, n = S.names;
+  var recap = '';
+  S.hist.forEach(function(h){
+    var d = [];
+    if(h.d[0]) d.push('舔 '+(h.d[0]>0?'+':'')+h.d[0]);
+    if(h.d[1]) d.push('冷 '+(h.d[1]>0?'+':'')+h.d[1]);
+    if(h.d[2]) d.push('瓜 '+(h.d[2]>0?'+':'')+h.d[2]);
+    recap += '<div class="ritem"><div class="rn">第 '+h.n+' 回合</div>'+
+      '<div class="rp">'+esc(h.pick)+'</div>'+
+      '<div class="rd">'+d.join(' · ')+'</div></div>';
+  });
+
+  app.innerHTML =
+    '<div class="meta">结局已生成</div>'+
+    '<div class="endt">'+esc(e.t)+'</div>'+
+    '<div class="endd">'+esc(e.d).replace(/\n/g,'<br>')+'</div>'+
+    '<div class="topo">'+
+      S.emo.A+' <b>'+esc(n.A)+'</b> ──舔 '+clamp(v.lick)+'──▶ '+S.emo.B+' <b>'+esc(n.B)+'</b><br>'+
+      S.emo.B+' <b>'+esc(n.B)+'</b> ──冷 '+clamp(v.cold)+'──▶ '+S.emo.A+' <b>'+esc(n.A)+'</b><br>'+
+      S.emo.C+' <b>'+esc(n.C)+'</b> ──瓜 '+clamp(v.melon)+'──▶ 围观席'+
+    '</div>'+
+    '<button class="btn" id="shot">生成聊天记录图</button>'+
+    '<button class="btn ghost" id="card">生成战绩卡</button>'+
+    '<div style="height:6px"></div>'+
+    '<button class="btn ghost" id="again">再来一次</button>'+
+    '<div class="btnrow">'+
+      '<button class="btn ghost" id="back" style="margin:0">换身份</button>'+
+      '<button class="btn ghost" id="share" style="margin:0">复制链接</button>'+
+    '</div>'+
+    '<div class="meta">本结局由算法随机生成 与现实人物无关 请勿对号入座</div>'+
+    '<div style="height:20px"></div>'+
+    '<div class="meta" style="color:#9aa0b8;font-size:13px;margin-bottom:8px">本局复盘</div>'+
+    '<div class="recap">'+recap+'</div>'+
+    '<div id="imgbox"></div>';
+
+  document.getElementById('shot').onclick = function(){ drawChat(); };
+  document.getElementById('card').onclick = function(){ drawCard(); };
+  document.getElementById('again').onclick = function(){ start(S.role); };
+  document.getElementById('back').onclick = home;
+  document.getElementById('share').onclick = copyLink;
+}
+
+function copyLink(){
+  var btn = document.getElementById('share');
+  var url = (location.protocol === 'file:') ? '' : location.href.split('#')[0];
+  if(!url){ btn.textContent='本地文件 无链接'; return; }
+  var done = function(){ btn.textContent='已复制'; setTimeout(function(){ btn.textContent='复制链接'; },1500); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done, function(){ fallbackCopy(url, done); });
+  } else { fallbackCopy(url, done); }
+}
+function fallbackCopy(text, done){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* ---------------- 画图工具 ---------------- */
+
+function roundRect(c,x,y,w,h,r){
+  if(c.roundRect){ c.beginPath(); c.roundRect(x,y,w,h,r); return; }
+  c.beginPath();
+  c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+}
+
+function wrapLines(ctx,text,maxW){
+  var out = [], paras = String(text).split('\n');
+  for(var p=0;p<paras.length;p++){
+    var para = paras[p];
+    if(!para){ out.push(''); continue; }
+    var line = '';
+    for(var i=0;i<para.length;i++){
+      var t = line + para[i];
+      if(ctx.measureText(t).width > maxW && line){ out.push(line); line = para[i]; }
+      else { line = t; }
+    }
+    if(line) out.push(line);
+  }
+  return out;
+}
+
+function showImg(url, tip){
+  var box = document.getElementById('imgbox');
+  if(!box) return;
+  box.innerHTML = '<div style="height:14px"></div><img class="out" src="'+url+'" alt="out">'+
+    '<div class="meta">'+tip+'</div>';
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ---------------- 聊天记录图 ---------------- */
+
+var FC = {A:{av:'#4a3f6b',bc:'#262138'}, B:{av:'#3f4a6b',bc:'#212a40'}, C:{av:'#3f6b52',bc:'#1e332a'}};
+
+function buildMsgs(){
+  var out = [];
+  out.push({sys:true, text:'「'+nm('C')+'」邀请「'+nm('A')+'」和「'+nm('B')+'」加入了群聊'});
+  S.log.forEach(function(l){
+    out.push({who:l.me, text:l.text});
+    out.push({who:l.other, text:l.reply});
+  });
+  var x = S.role, y = pickOther(x);
+  out.push({sys:true, text:'「'+nm(x)+'」拍了拍「'+nm(y)+'」'});
+  return out;
+}
+
+function drawChat(){
+  var msgs = buildMsgs();
+  var W = 760, PAD = 24, AV = 54, BGAP = 18, TITLE = 98, LH = 38, FS = 26;
+  var maxB = W - PAD*2 - AV - 16 - 36;
+  var cv = document.createElement('canvas');
+  var probe = cv.getContext('2d');
+  probe.font = FS + 'px ' + FT;
+
+  var items = msgs.map(function(m){
+    if(m.sys){
+      probe.font = '20px ' + FT;
+      var ls = wrapLines(probe, m.text, W - PAD*2 - 40);
+      probe.font = FS + 'px ' + FT;
+      return {sys:true, m:m, lines:ls, h:ls.length*30 + 34};
+    }
+    var lines = wrapLines(probe, m.text, maxB - 32);
+    var wmax = 0;
+    lines.forEach(function(l){ var w = probe.measureText(l).width; if(w>wmax) wmax = w; });
+    return {m:m, lines:lines, bw:Math.min(maxB, wmax+34), h:Math.max(AV, lines.length*LH+28)};
+  });
+
+  var bodyH = 0;
+  items.forEach(function(it){ bodyH += it.h + BGAP; });
+  var H = TITLE + PAD + bodyH + PAD + 40;
+
+  cv.width = W; cv.height = H;
+  var c = cv.getContext('2d');
+  c.fillStyle = '#0f1016'; c.fillRect(0,0,W,H);
+  c.fillStyle = '#191b25'; c.fillRect(0,0,W,TITLE);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#e9eaf2';
+  c.font = 'bold 30px ' + FT;
+  c.fillText('三个人的事（3）', W/2, TITLE/2 - 8);
+  c.fillStyle = '#5e6479';
+  c.font = '19px ' + FT;
+  c.fillText(nm('A') + ' · ' + nm('B') + ' · ' + nm('C'), W/2, TITLE/2 + 24);
+
+  var y = TITLE + PAD;
+  items.forEach(function(it){
+    if(it.sys){
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = '#4c5265'; c.font = '20px ' + FT;
+      it.lines.forEach(function(l,i){
+        c.fillText(l, W/2, y + 20 + i*30);
+      });
+      y += it.h + BGAP;
+      return;
+    }
+    var m = it.m, col = FC[m.who] || FC.A;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.beginPath(); c.arc(PAD + AV/2, y + AV/2, AV/2, 0, Math.PI*2);
+    c.fillStyle = col.av; c.fill();
+    c.font = '28px -apple-system,"PingFang SC","Noto Sans CJK SC","Apple Color Emoji",sans-serif';
+    c.fillStyle = '#ffffff';
+    c.fillText(S.emo[m.who] || '🙂', PAD + AV/2, y + AV/2 + 1);
+
+    var bx = PAD + AV + 16;
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    c.font = '19px ' + FT;
+    c.fillStyle = '#7b8098';
+    c.fillText(nm(m.who), bx, y + 20);
+
+    var by = y + 30;
+    var bh = it.lines.length*LH + 28;
+    roundRect(c, bx, by, it.bw, bh, 16);
+    c.fillStyle = col.bc; c.fill();
+    c.strokeStyle = 'rgba(255,255,255,.06)'; c.lineWidth = 1; c.stroke();
+
+    c.fillStyle = '#dfe4f2';
+    c.font = FS + 'px ' + FT;
+    it.lines.forEach(function(l,i){
+      c.fillText(l, bx + 17, by + 34 + i*LH);
+    });
+    y += it.h + BGAP;
+  });
+
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.fillStyle = '#3d4354'; c.font = '18px ' + FT;
+  c.fillText('仅供娱乐 · 纯属虚构', W/2, H - 18);
+
+  showImg(cv.toDataURL('image/png'), '长按图片保存 然后发群里 别提是我做的');
+}
+
+/* ---------------- 战绩卡 ---------------- */
+
+function drawCard(){
+  var W = 760, PAD = 40;
+  var cv = document.createElement('canvas');
+  var probe = cv.getContext('2d');
+  var els = [];
+
+  function add(type, text, extra){
+    var el = {type:type, text:text};
+    if(extra) for(var k in extra) el[k] = extra[k];
+    els.push(el);
+  }
+
+  add('title', ending().t);
+  add('sub', '群聊三角学 · 你扮演 ' + S.emo[S.role] + ' ' + nm(S.role));
+  ending().d.split('\n').forEach(function(l){ add('para', l); });
+  add('gap', '');
+  add('bar', '舔', {k:'lick', v:clamp(S.v.lick), color:'#e0707a'});
+  add('bar', '冷', {k:'cold', v:clamp(S.v.cold), color:'#5fa8e0'});
+  add('bar', '瓜', {k:'melon', v:clamp(S.v.melon), color:'#7fdc8a'});
+  add('gap', '');
+  add('label', '本局复盘');
+  S.hist.forEach(function(h){
+    var d = [];
+    if(h.d[0]) d.push('舔 '+(h.d[0]>0?'+':'')+h.d[0]);
+    if(h.d[1]) d.push('冷 '+(h.d[1]>0?'+':'')+h.d[1]);
+    if(h.d[2]) d.push('瓜 '+(h.d[2]>0?'+':'')+h.d[2]);
+    add('item', h.pick, {n:h.n, d:d.join(' · ')});
+  });
+
+  var HEAD = 118;
+  var maxW = W - PAD*2;
+
+  // measure
+  els.forEach(function(el){
+    if(el.type==='title'){ probe.font='bold 40px '+FT; el.lines = wrapLines(probe, el.text, maxW); el.h = el.lines.length*54 + 16; }
+    else if(el.type==='sub'){ probe.font='22px '+FT; el.lines=[el.text]; el.h = 44; }
+    else if(el.type==='para'){ probe.font='22px '+FT; el.lines = wrapLines(probe, el.text, maxW); el.h = el.lines.length*34 + 6; }
+    else if(el.type==='bar'){ el.h = 62; }
+    else if(el.type==='label'){ el.h = 58; }
+    else if(el.type==='item'){ probe.font='22px '+FT; el.lines = wrapLines(probe, el.text, maxW-60); el.h = el.lines.length*32 + 46; }
+    else { el.h = 22; }
+  });
+  var bodyH = 0;
+  els.forEach(function(el){ bodyH += el.h; });
+  var H = HEAD + 30 + bodyH + 70;
+
+  cv.width = W; cv.height = H;
+  var c = cv.getContext('2d');
+  var g = c.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#12141c'); g.addColorStop(.5,'#161a26'); g.addColorStop(1,'#101218');
+  c.fillStyle = g; c.fillRect(0,0,W,H);
+
+  c.textAlign='center'; c.textBaseline='middle';
+  c.fillStyle = '#7b8098'; c.font = '22px ' + FT;
+  c.fillText('群 聊 三 角 学', W/2, 60);
+  c.fillStyle = '#3d4354'; c.font = '19px ' + FT;
+  c.fillText(nm('A') + ' · ' + nm('B') + ' · ' + nm('C'), W/2, 94);
+
+  var y = HEAD + 20;
+  els.forEach(function(el){
+    if(el.type==='title'){
+      c.textAlign='left'; c.textBaseline='alphabetic';
+      c.fillStyle = '#dfe4f2'; c.font = 'bold 40px ' + FT;
+      el.lines.forEach(function(l,i){ c.fillText(l, PAD, y + 34 + i*54); });
+    } else if(el.type==='sub'){
+      c.textAlign='left'; c.fillStyle = '#6f8bd6'; c.font = '22px ' + FT;
+      c.fillText(el.text, PAD, y + 26);
+    } else if(el.type==='para'){
+      c.textAlign='left'; c.fillStyle = '#9aa0b8'; c.font = '22px ' + FT;
+      el.lines.forEach(function(l,i){ c.fillText(l, PAD, y + 22 + i*34); });
+    } else if(el.type==='bar'){
+      c.textAlign='left'; c.fillStyle = '#c9d3ea'; c.font = '22px ' + FT;
+      c.fillText(el.text, PAD, y + 26);
+      var bx = PAD + 54, bw = maxW - 54 - 60;
+      roundRect(c, bx, y + 12, bw, 14, 7); c.fillStyle = '#232838'; c.fill();
+      roundRect(c, bx, y + 12, Math.max(6, bw*el.v/100), 14, 7); c.fillStyle = el.color; c.fill();
+      c.textAlign='right'; c.fillStyle = '#7b8098'; c.font = '20px ' + FT;
+      c.fillText(String(el.v), W - PAD, y + 26);
+    } else if(el.type==='label'){
+      c.textAlign='left'; c.fillStyle = '#5e6479'; c.font = '21px ' + FT;
+      c.fillText(el.text, PAD, y + 40);
+      c.fillStyle = '#242838'; c.fillRect(PAD, y + 52, maxW, 1);
+    } else if(el.type==='item'){
+      c.textAlign='left'; c.fillStyle = '#4f566a'; c.font = '19px ' + FT;
+      c.fillText('第 ' + el.n + ' 回合', PAD + 26, y + 24);
+      c.beginPath(); c.arc(PAD + 8, y + 18, 3, 0, Math.PI*2); c.fillStyle = '#3f4a6b'; c.fill();
+      c.fillStyle = '#dfe4f2'; c.font = '22px ' + FT;
+      el.lines.forEach(function(l,i){ c.fillText(l, PAD + 26, y + 50 + i*32); });
+      c.fillStyle = '#6d84c9'; c.font = '18px ' + FT;
+      c.fillText(el.d, PAD + 26, y + 50 + el.lines.length*32 - 6);
+    }
+    y += el.h;
+  });
+
+  c.textAlign='center'; c.fillStyle = '#3a4053'; c.font = '18px ' + FT;
+  c.fillText('纯属虚构 请勿对号入座', W/2, H - 34);
+
+  showImg(cv.toDataURL('image/png'), '长按保存 这就是你的战绩');
+}
+
+home();
+})();
+</script>
+</body>
+</html>
